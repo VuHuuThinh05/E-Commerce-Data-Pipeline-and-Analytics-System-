@@ -1,0 +1,46 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw Olist e-commerce data ingested into PostgreSQL."
+
+    database: ecommerce
+    schema: raw
+
+    tables:
+
+      - name: customers
+        identifier: raw_customers
+        description: "Raw customer records from Olist."
+
+      - name: orders
+        identifier: raw_orders
+        description: "Raw order records from Olist."
+
+      - name: order_items
+        identifier: raw_order_items
+        description: "Raw order item records. One row per item in an order."
+
+      - name: payments
+        identifier: raw_payments
+        description: "Raw payment records. Multiple payment records may belong to one order."
+
+      - name: products
+        identifier: raw_products
+        description: "Raw product records from Olist."
+
+      - name: sellers
+        identifier: raw_sellers
+        description: "Raw seller records from Olist."
+
+      - name: reviews
+        identifier: raw_reviews
+        description: "Raw customer review records from Olist."
+
+      - name: geolocation
+        identifier: raw_geolocation
+        description: "Raw Brazilian geolocation records."
+
+      - name: category_translation
+        identifier: raw_category_translation
+        description: "Raw Portuguese-to-English product category translations."

@@ -1,87 +1,135 @@
-# type: ignore
 from airflow import DAG  # type: ignore
-from airflow.operators.python_operator import PythonOperator  # type: ignore
-from airflow.operators.bash import BashOperator  # type: ignore
+from airflow.operators.python import PythonOperator # type: ignore
+from airflow.operators.bash import BashOperator # type: ignore
 from datetime import datetime, timedelta
 import sys
-sys.path.insert(0, '/opt/airflow/scripts')
+import time
+import threading
 
-from kafka_producer import EcommerceProducer  # type: ignore
-from kafka_consumer import EcommerceConsumer  # type: ignore
+sys.path.insert(0, "/opt/airflow/scripts")
+
+from kafka_producer import EcommerceProducer
+from kafka_consumer import EcommerceConsumer
+
 
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    "owner": "airflow",
+    "depends_on_past": False,
+    "start_date": datetime(2024, 1, 1),
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
 }
 
+
 def run_kafka_producer():
-    """Stream batch of orders to Kafka"""
+    """
+    Stream a batch of e-commerce orders to Kafka.
+    """
     producer = EcommerceProducer()
-    producer.load_data()
-    producer.stream_orders(speed_multiplier=1000, max_events=10000)
-    producer.close()
+
+    try:
+        producer.load_data()
+        producer.stream_orders(
+            speed_multiplier=1000,
+            max_events=10000
+        )
+    finally:
+        producer.close()
+
 
 def run_kafka_consumer():
-    """Consume messages from Kafka and write to PostgreSQL"""
-    import time
-    import threading
-    
-    # Give producer a head start
-    time.sleep(2)
+    """
+    Consume Kafka messages and write them to PostgreSQL.
+    """
     consumer = EcommerceConsumer()
-    
-    # Run consumer in a thread with timeout
-    consumer_thread = threading.Thread(target=consumer.process_messages)
-    consumer_thread.daemon = True
-    consumer_thread.start()
-    
-    # Wait for 45 seconds (enough time for 10000 events at 1000x speed)
-    consumer_thread.join(timeout=45)
-    
-    # Force shutdown if still running
-    consumer.shutdown_requested = True
-    consumer_thread.join(timeout=5)
-    
-    # Clean up
-    consumer.close()
+
+    try:
+        consumer_thread = threading.Thread(
+            target=consumer.process_messages
+        )
+
+        consumer_thread.daemon = True
+        consumer_thread.start()
+
+        # Wait for the consumer to process the batch
+        consumer_thread.join(timeout=60)
+
+        # Request shutdown
+        consumer.shutdown_requested = True
+
+        # Give the consumer time to finish cleanly
+        consumer_thread.join(timeout=10)
+
+    finally:
+        consumer.close()
+
 
 with DAG(
-    'ecommerce_daily_pipeline',
+    dag_id="ecommerce_daily_pipeline",
+
     default_args=default_args,
-    description='Daily e-commerce data pipeline',
-    schedule='@daily',
+
+    description="Daily e-commerce data pipeline",
+
+    schedule="@daily",
+
     catchup=False,
-    tags=['ecommerce', 'etl']
+
+    tags=[
+        "ecommerce",
+        "kafka",
+        "postgresql",
+        "dbt",
+        "etl"
+    ],
 ) as dag:
-    
-    # Task 1: Stream orders to Kafka
+
+    # =========================================================
+    # TASK 1 — PRODUCER
+    # =========================================================
+
     stream_orders = PythonOperator(
-        task_id='stream_orders_to_kafka',
-        python_callable=run_kafka_producer
+        task_id="stream_orders_to_kafka",
+        python_callable=run_kafka_producer,
     )
-    
-    # Task 2: Consume from Kafka and load to PostgreSQL
+
+    # =========================================================
+    # TASK 2 — CONSUMER
+    # =========================================================
+
     consume_orders = PythonOperator(
-        task_id='consume_orders_from_kafka',
-        python_callable=run_kafka_consumer
+        task_id="consume_orders_from_kafka",
+        python_callable=run_kafka_consumer,
     )
-    
-    # Task 3: Run dbt models
+
+    # =========================================================
+    # TASK 3 — DBT RUN
+    # =========================================================
+
     run_dbt = BashOperator(
-        task_id='run_dbt_models',
-        bash_command='cd /opt/airflow/dbt/ecommerce_analytics && dbt run'
+        task_id="run_dbt_models",
+        bash_command=(
+            "cd /opt/airflow/dbt/ecommerce_analytics "
+            "&& dbt run"
+        ),
     )
-    
-    # Task 4: Run dbt tests
+
+    # =========================================================
+    # TASK 4 — DBT TEST
+    # =========================================================
+
     test_dbt = BashOperator(
-        task_id='test_dbt_models',
-        bash_command='cd /opt/airflow/dbt/ecommerce_analytics && dbt test'
+        task_id="test_dbt_models",
+        bash_command=(
+            "cd /opt/airflow/dbt/ecommerce_analytics "
+            "&& dbt test"
+        ),
     )
-    
-    # Set dependencies - producer and consumer run in parallel, then dbt
-    [stream_orders, consume_orders] >> run_dbt >> test_dbt
+
+    # =========================================================
+    # PIPELINE DEPENDENCY
+    # =========================================================
+
+    stream_orders >> consume_orders >> run_dbt >> test_dbt

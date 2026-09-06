@@ -1,4 +1,8 @@
 {
-  "reportMissingImports": false,
-  "reportMissingModuleSource": false
+  "venvPath": ".",
+  "venv": "venv",
+  "extraPaths": [
+    "./streamlit",
+    "./scripts"
+  ]
 }

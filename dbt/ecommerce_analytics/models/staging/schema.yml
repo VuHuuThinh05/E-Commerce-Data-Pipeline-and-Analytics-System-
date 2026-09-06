@@ -1,71 +1,197 @@
 version: 2
 
-sources:
-  - name: raw
-    description: "Raw data ingested from Kafka consumer into PostgreSQL"
-    database: ecommerce
-    schema: public
-    tables:
-      - name: raw_orders
-        description: "Raw order events streamed from Kafka. Contains one row per product per order."
-        columns:
-          - name: id
-            description: "Auto-incrementing primary key"
-            tests:
-              - unique
-              - not_null
-          - name: order_id
-            description: "Order identifier from source system"
-            tests:
-              - not_null
-          - name: event_timestamp
-            description: "Timestamp when the order event was created"
-            tests:
-              - not_null
-
 models:
-  - name: stg_orders
-    description: "Staging view of raw order data. Pass-through layer with minimal transformations for downstream consumption."
+
+  # ==========================================================
+  # CUSTOMERS
+  # ==========================================================
+
+  - name: stg_customers
+    description: "Cleaned and standardized customer data."
+
     columns:
-      - name: order_id
-        description: "Unique identifier for each order"
-        tests:
-          - not_null
+
       - name: customer_id
-        description: "Unique identifier for each customer"
         tests:
           - not_null
-      - name: customer_city
-        description: "City where the customer is located"
+          - unique
+
+      - name: customer_unique_id
+        tests:
+          - not_null
+
       - name: customer_state
-        description: "Brazilian state code where customer is located (e.g., SP, RJ, MG)"
-      - name: product_id
-        description: "Unique identifier for each product"
         tests:
           - not_null
-      - name: product_category
-        description: "Product category name (some may be in Portuguese)"
-      - name: price
-        description: "Price of the individual product in Brazilian Real (BRL)"
+
+
+  # ==========================================================
+  # ORDERS
+  # ==========================================================
+
+  - name: stg_orders
+    description: "Cleaned order-level data."
+
+    columns:
+
+      - name: order_id
         tests:
           - not_null
-      - name: freight_value
-        description: "Shipping cost for this product in BRL"
+          - unique
+
+      - name: customer_id
         tests:
           - not_null
-      - name: payment_type
-        description: "Payment method used (e.g., credit_card, boleto, voucher)"
-      - name: payment_value
-        description: "Amount paid for this product in BRL"
-        tests:
-          - not_null
+
       - name: order_status
-        description: "Current status of the order (e.g., delivered, shipped, canceled)"
-      - name: event_timestamp
-        description: "Timestamp when this order event occurred"
         tests:
           - not_null
-      - name: ingested_at
-        description: "Timestamp when this record was ingested into the database"
+
+      - name: order_purchase_timestamp
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # ORDER ITEMS
+  # ==========================================================
+
+  - name: stg_order_items
+    description: "Cleaned order item data. Grain: one row per order item."
+
+    columns:
+
+      - name: order_id
+        tests:
+          - not_null
+
+      - name: order_item_id
+        tests:
+          - not_null
+
+      - name: product_id
+        tests:
+          - not_null
+
+      - name: seller_id
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # PAYMENTS
+  # ==========================================================
+
+  - name: stg_payments
+    description: "Cleaned payment data. Grain: one row per payment record."
+
+    columns:
+
+      - name: order_id
+        tests:
+          - not_null
+
+      - name: payment_sequential
+        tests:
+          - not_null
+
+      - name: payment_value
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # PRODUCTS
+  # ==========================================================
+
+  - name: stg_products
+    description: "Cleaned product master data."
+
+    columns:
+
+      - name: product_id
+        tests:
+          - not_null
+          - unique
+
+
+  # ==========================================================
+  # SELLERS
+  # ==========================================================
+
+  - name: stg_sellers
+    description: "Cleaned seller master data."
+
+    columns:
+
+      - name: seller_id
+        tests:
+          - not_null
+          - unique
+
+      - name: seller_state
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # REVIEWS
+  # ==========================================================
+
+  - name: stg_reviews
+    description: "Cleaned customer review data."
+
+    columns:
+
+      - name: review_id
+        tests:
+          - not_null
+
+      - name: order_id
+        tests:
+          - not_null
+
+      - name: review_score
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # GEOLOCATION
+  # ==========================================================
+
+  - name: stg_geolocation
+    description: "Deduplicated Brazilian geolocation data."
+
+    columns:
+
+      - name: geolocation_zip_code_prefix
+        tests:
+          - not_null
+
+      - name: geolocation_lat
+        tests:
+          - not_null
+
+      - name: geolocation_lng
+        tests:
+          - not_null
+
+
+  # ==========================================================
+  # CATEGORY TRANSLATION
+  # ==========================================================
+
+  - name: stg_category_translation
+    description: "Product category translation from Portuguese to English."
+
+    columns:
+
+      - name: product_category_name
+        tests:
+          - not_null
+          - unique
+
+      - name: product_category_name_english
         tests:
           - not_null
